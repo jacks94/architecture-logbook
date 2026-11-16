@@ -1,0 +1,9 @@
+{
+  "appId": "com.jacks94.architecturelogbook",
+  "appName": "Architecture Logbook",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F3EEE4"
+  }
+}

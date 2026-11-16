@@ -1,0 +1,84 @@
+name: iOS app
+
+# Every change to the app folder is test-built for the iPhone simulator (no Apple account needed).
+# To send a build to TestFlight: Actions > iOS app > Run workflow > tick "Upload to TestFlight".
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: Upload this build to TestFlight (needs the four Apple secrets)
+        type: boolean
+        default: false
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use the newest stable Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|candidate' | sort -V | tail -1)
+          echo "Using $XC"; sudo xcode-select -s "$XC"; xcodebuild -version
+
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund && npx cap --version
+
+      - name: Create the iOS project
+        run: npx cap add ios && bash ios-setup.sh && npx cap sync ios
+
+      - name: Find the Xcode project
+        id: proj
+        run: |
+          if [ -d ios/App/App.xcworkspace ]; then echo "args=-workspace ios/App/App.xcworkspace" >> "$GITHUB_OUTPUT"
+          else echo "args=-project ios/App/App.xcodeproj" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Build check (simulator, unsigned)
+        if: ${{ !inputs.testflight }}
+        run: |
+          xcodebuild ${{ steps.proj.outputs.args }} -scheme App -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO TARGETED_DEVICE_FAMILY=1 build | tail -30
+
+      - name: Archive, sign and upload to TestFlight
+        if: ${{ inputs.testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || { echo "::error::Missing repository secret $v (see README, TestFlight setup)"; exit 1; }
+          done
+          mkdir -p "$RUNNER_TEMP/keys"
+          KEY="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild ${{ steps.proj.outputs.args }} -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic TARGETED_DEVICE_FAMILY=1 \
+            MARKETING_VERSION=0.1.0 CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" "${AUTH[@]}" archive | tail -30
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
+          rm -f "$KEY"
