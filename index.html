@@ -428,6 +428,13 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .lv.todo .ln{background:none;border:1.5px dashed var(--handle);color:var(--handle)}
 .lv.todo b{color:var(--muted)}
 .gain{display:inline-block;margin-top:10px;font-family:var(--mono);font-weight:500;font-size:13px;color:var(--brick);background:var(--memo);border-radius:999px;padding:5px 12px}
+
+/* map overlays sit above the Google map layers; the card goes at the top so Google's logo and zoom stay visible */
+#gmap{z-index:0}
+.mapctl,.mapnote,#mapcard .mapcard{z-index:3}
+.mapwrap.g .mapcard{top:10px;bottom:auto}
+.mapwrap.g .mapctl{top:auto;bottom:118px}
+.legend i.c{background:var(--ink);border-color:var(--card);box-shadow:0 0 0 1px var(--ink)}
 </style></head><body>
 <div id="app"><main id="view" tabindex="-1"></main><div id="bar" class="actionbar" hidden></div><nav id="tabs" aria-label="Main"></nav><div id="toast" role="status" aria-live="polite"></div></div>
 <noscript>This app needs JavaScript.</noscript>
@@ -628,21 +635,33 @@ function loadGoogle(){G.state='loading';window.__gmReady=()=>{G.state='ready';if
 function googleFailed(msg){if(G.state==='failed')return;G.state='failed';toast(msg);if($('#gmap'))render(true)}
 function initGoogle(list){const el=$('#gmap');if(!el)return;if(G.state==='idle')loadGoogle();if(G.state!=='ready')return;
  const gm=google.maps,loc=Data.loc(),vis=Data.visitedSet();if(!G.view)G.view={center:{lat:loc.lat,lng:loc.lng},zoom:15};
- const map=new gm.Map(el,{center:G.view.center,zoom:G.view.zoom,styles:PAPER_STYLE,disableDefaultUI:true,zoomControl:true,gestureHandling:'greedy',clickableIcons:false,backgroundColor:'#EFE9DD',minZoom:9});
+ const map=new gm.Map(el,{center:G.view.center,zoom:G.view.zoom,styles:PAPER_STYLE,disableDefaultUI:true,zoomControl:true,gestureHandling:'greedy',clickableIcons:false,backgroundColor:'#EFE9DD',minZoom:9,maxZoom:19});
  map.addListener('idle',()=>{const c=map.getCenter();if(c)G.view={center:{lat:c.lat(),lng:c.lng()},zoom:map.getZoom()}});
  const icon=(b,sel)=>{const v=vis.has(b.n),s=Data.isSaved(b.n);return{path:gm.SymbolPath.CIRCLE,scale:sel?9:6,fillOpacity:1,strokeWeight:1.5,fillColor:sel?'#1D1B17':v?'#C4532D':s?'#DDE8E3':'#FFFDF8',strokeColor:sel?'#1D1B17':v?'#C4532D':s?'#3E6B5C':'#1D1B17'}};
- const marks=new Map();const showCard=()=>{const c=$('#mapcard'),b=BY.get(mapSel);if(c)c.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:''};
- const select=n=>{const old=marks.get(mapSel);mapSel=n;if(old)old.m.setIcon(icon(old.b,false));const cur=marks.get(n);if(cur){cur.m.setIcon(icon(cur.b,true));cur.m.setZIndex(999)}showCard()};
- list.forEach(b=>{const m=new gm.Marker({position:{lat:b.lat,lng:b.lng},map,icon:icon(b,b.n===mapSel),title:b.name,zIndex:vis.has(b.n)?2:1});m.addListener('click',()=>select(b.n));marks.set(b.n,{m,b})});
+ const marks=new Map();const showCard=()=>{const c=$('#mapcard'),b=BY.get(mapSel);if(c){c.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:'';if(b&&c.firstElementChild.scrollIntoView)c.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}};
+ const select=n=>{const old=marks.get(mapSel);mapSel=n;if(old)old.m.setIcon(icon(old.b,false));const cur=marks.get(n);if(cur){cur.m.setIcon(icon(cur.b,true));cur.m.setZIndex(999)}showCard();recluster(true)};
+ list.forEach(b=>{const m=new gm.Marker({position:{lat:b.lat,lng:b.lng},icon:icon(b,b.n===mapSel),title:b.name,zIndex:vis.has(b.n)?2:1});m.addListener('click',()=>select(b.n));marks.set(b.n,{m,b})});
+ /* clustering: pins closer than 44 px at the current zoom merge into one numbered marker */
+ let clusters=[],lastZ=null;const wpx=(b,z)=>{const s=256*Math.pow(2,z),sn=Math.sin(b.lat*Math.PI/180);return[(b.lng+180)/360*s,(.5-Math.log((1+sn)/(1-sn))/(4*Math.PI))*s]};
+ function recluster(force){const z=map.getZoom();if(z==null||(!force&&z===lastZ))return;lastZ=z;clusters.forEach(c=>c.setMap(null));clusters=[];const R=z>=17?0:44,groups=[];
+  list.forEach(b=>{const p=wpx(b,z),solo=b.n===mapSel;let g=null;if(R&&!solo)for(const x of groups){if(!x.solo&&Math.hypot(x.x-p[0],x.y-p[1])<R){g=x;break}}
+   if(g){g.items.push(b);const k=g.items.length;g.x+=(p[0]-g.x)/k;g.y+=(p[1]-g.y)/k;g.lat+=(b.lat-g.lat)/k;g.lng+=(b.lng-g.lng)/k}else groups.push({x:p[0],y:p[1],lat:b.lat,lng:b.lng,items:[b],solo})});
+  groups.forEach(g=>{const k=g.items.length;if(k===1){const m=marks.get(g.items[0].n).m;if(m.getMap()!==map)m.setMap(map);return}
+   g.items.forEach(b=>marks.get(b.n).m.setMap(null));const got=g.items.filter(b=>vis.has(b.n)).length;
+   const c=new gm.Marker({position:{lat:g.lat,lng:g.lng},map,zIndex:500,title:k+' buildings'+(got?', '+got+' visited':'')+'. Tap to zoom in',label:{text:String(k),color:'#FFFDF8',fontFamily:'IBM Plex Mono, ui-monospace, monospace',fontSize:'11px',fontWeight:'500'},icon:{path:gm.SymbolPath.CIRCLE,scale:k<10?13:k<50?16:19,fillColor:'#1D1B17',fillOpacity:.94,strokeColor:got?'#C4532D':'#FFFDF8',strokeWeight:got?2.5:2}});
+   c.addListener('click',()=>{if(map.getZoom()>=16){map.setZoom(map.getZoom()+1);map.panTo({lat:g.lat,lng:g.lng})}else{const bb=new gm.LatLngBounds();g.items.forEach(b=>bb.extend({lat:b.lat,lng:b.lng}));map.fitBounds(bb,56)}});clusters.push(c)})}
+ map.addListener('zoom_changed',()=>recluster());recluster(true);G.dbg=()=>({zoom:map.getZoom(),clusters:clusters.length,singles:[...marks.values()].filter(x=>x.m.getMap()).length});
  new gm.Marker({position:{lat:loc.lat,lng:loc.lng},map,clickable:false,zIndex:1000,title:'You',icon:{path:gm.SymbolPath.CIRCLE,scale:7,fillColor:'#3E6B5C',fillOpacity:1,strokeColor:'#FFFFFF',strokeWeight:2.5}});
  map.addListener('click',()=>select(null));const btn=$('[data-m="me"]',el.parentNode);if(btn)btn.onclick=()=>{map.panTo({lat:loc.lat,lng:loc.lng});map.setZoom(15)};
  if(mapSel&&!marks.has(mapSel))mapSel=null;showCard()}
-function mapHTML(){if(useGoogle())return`<div class="mapwrap"><div id="gmap" style="position:absolute;inset:0" role="application" aria-label="Map of buildings. Use the list view for an accessible list."></div>${G.state==='ready'?'':'<div class="mapnote">Loading map…</div>'}<div class="mapctl" style="top:auto;bottom:118px"><button data-m="me" aria-label="Centre on my location">${I('target')}</button></div><div id="mapcard"></div></div>
- <div class="legend"><span><i></i>Not visited</span><span><i class="s"></i>Saved</span><span><i class="v"></i>Visited</span><span><i class="me"></i>You</span></div>`;return`<div class="mapwrap"><svg class="m" id="map" role="application" aria-label="Schematic map of buildings. Use the list view for an accessible list."><path class="river" d="M${THAMES.map(p=>px(p[0]).toFixed(0)+' '+py(p[1]).toFixed(0)).join('L')}"/><g id="lbls">${AREAS.map(a=>`<text class="lbl" x="${px(a[2]).toFixed(0)}" y="${py(a[1]).toFixed(0)}">${a[0].toUpperCase()}</text>`).join('')}</g><g id="pins"></g><circle class="halo" id="halo"/><circle class="me" id="me"/></svg>
+function mapHTML(){if(useGoogle())return`<div class="mapwrap g"><div id="gmap" style="position:absolute;inset:0" role="application" aria-label="Map of buildings. Use the list view for an accessible list."></div>${G.state==='ready'?'':'<div class="mapnote">Loading map…</div>'}<div class="mapctl" style="top:auto;bottom:118px"><button data-m="me" aria-label="Centre on my location">${I('target')}</button></div><div id="mapcard"></div></div>
+ <div class="legend"><span><i></i>Not visited</span><span><i class="s"></i>Saved</span><span><i class="v"></i>Visited</span><span><i class="c"></i>Several, tap to zoom</span><span><i class="me"></i>You</span></div>`;return`<div class="mapwrap"><svg class="m" id="map" role="application" aria-label="Schematic map of buildings. Use the list view for an accessible list."><path class="river" d="M${THAMES.map(p=>px(p[0]).toFixed(0)+' '+py(p[1]).toFixed(0)).join('L')}"/><g id="lbls">${AREAS.map(a=>`<text class="lbl" x="${px(a[2]).toFixed(0)}" y="${py(a[1]).toFixed(0)}">${a[0].toUpperCase()}</text>`).join('')}</g><g id="pins"></g><circle class="halo" id="halo"/><circle class="me" id="me"/></svg>
  <div class="mapnote">Schematic map · not for navigation</div><div class="mapctl"><button data-m="in" aria-label="Zoom in">+</button><button data-m="out" aria-label="Zoom out">−</button><button data-m="me" aria-label="Centre on my location">${I('target')}</button></div><div id="mapcard"></div></div>
  <div class="legend"><span><i></i>Not visited</span><span><i class="s"></i>Saved</span><span><i class="v"></i>Visited</span><span><i class="me"></i>You</span></div>`}
 function mapCleanup(){if(mapOff){mapOff();mapOff=null}}
-function initMap(list){if(useGoogle())return initGoogle(list);const svg=$('#map');if(!svg)return;const loc=Data.loc(),vis=Data.visitedSet();
+function fitMap(){const w=$('.mapwrap'),v=$('#view');if(!w||!v)return;const lg=w.nextElementSibling&&w.nextElementSibling.classList.contains('legend')?w.nextElementSibling.offsetHeight:0,top=w.getBoundingClientRect().top-v.getBoundingClientRect().top+v.scrollTop;w.style.height=Math.max(360,v.clientHeight-top-lg-16)+'px'}
+window.addEventListener('resize',fitMap);
+function initMap(list){fitMap();if(useGoogle())return initGoogle(list);const svg=$('#map');if(!svg)return;const loc=Data.loc(),vis=Data.visitedSet();
  if(!mapV)mapV={cx:px(loc.lng),cy:py(loc.lat),w:520};
  const pts=list.map(b=>({b,x:px(b.lng),y:py(b.lat)}));
  $('#pins',svg).innerHTML=pts.map(p=>`<circle class="pin ${vis.has(p.b.n)?'v':Data.isSaved(p.b.n)?'s':''}" data-n="${p.b.n}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}"/>`).join('');
@@ -651,7 +670,7 @@ function initMap(list){if(useGoogle())return initGoogle(list);const svg=$('#map'
  function apply(){const r=size(),u=mapV.w/r.width,h=mapV.w*r.height/r.width;mapV.w=Math.min(6500,Math.max(40,mapV.w));svg.setAttribute('viewBox',`${mapV.cx-mapV.w/2} ${mapV.cy-h/2} ${mapV.w} ${h}`);
   const pr=(mapV.w>2500?3.2:mapV.w>900?4.5:6)*u;$$('.pin',svg).forEach(c=>{const sel=+c.dataset.n===mapSel;c.setAttribute('r',sel?pr*1.5:pr);c.setAttribute('stroke-width',1.5*u);c.classList.toggle('sel',sel)});
   me.setAttribute('r',6*u);me.setAttribute('stroke-width',2*u);halo.setAttribute('r',16*u);$('.river',svg).setAttribute('stroke-width',Math.max(14,7*u));$$('.lbl',svg).forEach(t=>t.setAttribute('font-size',10.5*u));$('#lbls',svg).style.display=mapV.w<180?'none':''}
- function showCard(){const el=$('#mapcard');if(!el)return;const b=BY.get(mapSel);el.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:''}
+ function showCard(){const el=$('#mapcard');if(!el)return;const b=BY.get(mapSel);el.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:'';if(b&&el.firstElementChild.scrollIntoView)el.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}
  const ptrs=new Map();let start=null,moved=0;
  const down=e=>{svg.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);start={t:Date.now(),x:e.clientX,y:e.clientY};moved=0};
  const move=e=>{if(!ptrs.has(e.pointerId))return;const r=size(),u=mapV.w/r.width,prev=ptrs.get(e.pointerId);
