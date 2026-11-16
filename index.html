@@ -435,6 +435,14 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .mapwrap.g .mapcard{top:10px;bottom:auto}
 .mapwrap.g .mapctl{top:auto;bottom:118px}
 .legend i.c{background:var(--ink);border-color:var(--card);box-shadow:0 0 0 1px var(--ink)}
+
+/* directions */
+a.setrow{text-decoration:none;color:inherit}
+.locbox .btn .ic{width:18px;height:18px}
+.mapcard{display:flex;align-items:center;gap:6px;padding-right:10px}
+.mapcard .item{flex:1;min-width:0}
+.dirb{width:44px;height:44px;border-radius:22px;flex:none;background:var(--verd-bg);color:var(--verd-dark);display:flex;align-items:center;justify-content:center}
+.dirb .ic{width:20px;height:20px}
 </style></head><body>
 <div id="app"><main id="view" tabindex="-1"></main><div id="bar" class="actionbar" hidden></div><nav id="tabs" aria-label="Main"></nav><div id="toast" role="status" aria-live="polite"></div></div>
 <noscript>This app needs JavaScript.</noscript>
@@ -638,7 +646,7 @@ function initGoogle(list){const el=$('#gmap');if(!el)return;if(G.state==='idle')
  const map=new gm.Map(el,{center:G.view.center,zoom:G.view.zoom,styles:PAPER_STYLE,disableDefaultUI:true,zoomControl:true,gestureHandling:'greedy',clickableIcons:false,backgroundColor:'#EFE9DD',minZoom:9,maxZoom:19});
  map.addListener('idle',()=>{const c=map.getCenter();if(c)G.view={center:{lat:c.lat(),lng:c.lng()},zoom:map.getZoom()}});
  const icon=(b,sel)=>{const v=vis.has(b.n),s=Data.isSaved(b.n);return{path:gm.SymbolPath.CIRCLE,scale:sel?9:6,fillOpacity:1,strokeWeight:1.5,fillColor:sel?'#1D1B17':v?'#C4532D':s?'#DDE8E3':'#FFFDF8',strokeColor:sel?'#1D1B17':v?'#C4532D':s?'#3E6B5C':'#1D1B17'}};
- const marks=new Map();const showCard=()=>{const c=$('#mapcard'),b=BY.get(mapSel);if(c){c.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:'';if(b&&c.firstElementChild.scrollIntoView)c.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}};
+ const marks=new Map();const showCard=()=>{const c=$('#mapcard'),b=BY.get(mapSel);if(c){c.innerHTML=b?mapCardHTML(b,vis):'';if(b&&c.firstElementChild.scrollIntoView)c.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}};
  const select=n=>{const old=marks.get(mapSel);mapSel=n;if(old)old.m.setIcon(icon(old.b,false));const cur=marks.get(n);if(cur){cur.m.setIcon(icon(cur.b,true));cur.m.setZIndex(999)}showCard();recluster(true)};
  list.forEach(b=>{const m=new gm.Marker({position:{lat:b.lat,lng:b.lng},icon:icon(b,b.n===mapSel),title:b.name,zIndex:vis.has(b.n)?2:1});m.addListener('click',()=>select(b.n));marks.set(b.n,{m,b})});
  /* clustering: pins closer than 44 px at the current zoom merge into one numbered marker */
@@ -659,6 +667,7 @@ function mapHTML(){if(useGoogle())return`<div class="mapwrap g"><div id="gmap" s
  <div class="mapnote">Schematic map · not for navigation</div><div class="mapctl"><button data-m="in" aria-label="Zoom in">+</button><button data-m="out" aria-label="Zoom out">−</button><button data-m="me" aria-label="Centre on my location">${I('target')}</button></div><div id="mapcard"></div></div>
  <div class="legend"><span><i></i>Not visited</span><span><i class="s"></i>Saved</span><span><i class="v"></i>Visited</span><span><i class="me"></i>You</span></div>`}
 function mapCleanup(){if(mapOff){mapOff();mapOff=null}}
+function mapCardHTML(b,vis){return`<div class="mapcard">${item(b,vis)}<button class="dirb" data-act="dir" data-n="${b.n}" aria-label="Get directions to ${esc(b.name)}">${I('dir')}</button></div>`}
 function fitMap(){const w=$('.mapwrap'),v=$('#view');if(!w||!v)return;const lg=w.nextElementSibling&&w.nextElementSibling.classList.contains('legend')?w.nextElementSibling.offsetHeight:0,top=w.getBoundingClientRect().top-v.getBoundingClientRect().top+v.scrollTop;w.style.height=Math.max(360,v.clientHeight-top-lg-16)+'px'}
 window.addEventListener('resize',fitMap);
 function initMap(list){fitMap();if(useGoogle())return initGoogle(list);const svg=$('#map');if(!svg)return;const loc=Data.loc(),vis=Data.visitedSet();
@@ -670,7 +679,7 @@ function initMap(list){fitMap();if(useGoogle())return initGoogle(list);const svg
  function apply(){const r=size(),u=mapV.w/r.width,h=mapV.w*r.height/r.width;mapV.w=Math.min(6500,Math.max(40,mapV.w));svg.setAttribute('viewBox',`${mapV.cx-mapV.w/2} ${mapV.cy-h/2} ${mapV.w} ${h}`);
   const pr=(mapV.w>2500?3.2:mapV.w>900?4.5:6)*u;$$('.pin',svg).forEach(c=>{const sel=+c.dataset.n===mapSel;c.setAttribute('r',sel?pr*1.5:pr);c.setAttribute('stroke-width',1.5*u);c.classList.toggle('sel',sel)});
   me.setAttribute('r',6*u);me.setAttribute('stroke-width',2*u);halo.setAttribute('r',16*u);$('.river',svg).setAttribute('stroke-width',Math.max(14,7*u));$$('.lbl',svg).forEach(t=>t.setAttribute('font-size',10.5*u));$('#lbls',svg).style.display=mapV.w<180?'none':''}
- function showCard(){const el=$('#mapcard');if(!el)return;const b=BY.get(mapSel);el.innerHTML=b?`<div class="mapcard">${item(b,vis)}</div>`:'';if(b&&el.firstElementChild.scrollIntoView)el.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}
+ function showCard(){const el=$('#mapcard');if(!el)return;const b=BY.get(mapSel);el.innerHTML=b?mapCardHTML(b,vis):'';if(b&&el.firstElementChild.scrollIntoView)el.firstElementChild.scrollIntoView({block:'nearest',behavior:'smooth'})}
  const ptrs=new Map();let start=null,moved=0;
  const down=e=>{svg.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);start={t:Date.now(),x:e.clientX,y:e.clientY};moved=0};
  const move=e=>{if(!ptrs.has(e.pointerId))return;const r=size(),u=mapV.w/r.width,prev=ptrs.get(e.pointerId);
@@ -694,9 +703,9 @@ function vDetail(b){const vs=Data.visitsFor(b.n),pv=Data.primary(b.n),d=dist(b),
  <div class="pad" style="padding-top:20px"><div class="eyebrow">No. ${no4(b.n)} · ${esc(b.style)} · London</div><div class="dname ${b.name.length>22?'long':''}" role="heading" aria-level="1">${esc(b.name)}</div>
  <div style="font-weight:500">${esc(byline(b))}</div><p class="muted" style="line-height:1.48;margin:10px 0 16px">${esc(b.sum)}</p><hr class="rule">
  <div class="facts">${facts.map(f=>`<div><span class="label">${f[0]}</span><b>${esc(f[1])}</b></div>`).join('')}</div>
- ${here?`<div class="here"><span class="dot">${I('pin')}</span><span class="grow"><b>You’re here</b><span>Within ${fmtDist(d)}. ${pv?'Check in to add a verified visit.':'Check in to collect it, verified on site.'}</span></span></div>`
- :`<div class="note-box row between"><span><b style="font-weight:600">${fmtDist(d)} away</b><span class="muted" style="display:block;font-size:13px;margin-top:2px">${esc(b.street)}, ${esc(b.boro)}</span></span><a class="link" href="https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}" target="_blank" rel="noopener">${I('dir')}Directions</a></div>
- <div style="text-align:center"><button class="link" data-act="standhere" data-n="${b.n}">Demo: pretend I’m standing here</button></div>`}</div>
+ ${here?`<div class="here"><span class="dot">${I('pin')}</span><span class="grow"><b>You’re here</b><span>Within ${fmtDist(d)}. ${pv?'Check in to add a verified visit.':'Check in to collect it, verified on site.'}</span></span></div>`:''}
+ <div class="note-box locbox"${here?' style="margin-top:10px"':''}><b style="font-weight:600;display:block">${fmtDist(d)} away</b><span class="muted" style="display:block;font-size:13px;margin-top:2px">${esc(b.street)}, ${esc(b.boro)}</span><button class="btn soft wide" data-act="dir" data-n="${b.n}" style="margin-top:12px">${I('dir')}Get directions</button></div>
+ ${here?'':`<div style="text-align:center"><button class="link" data-act="standhere" data-n="${b.n}">Demo: pretend I’m standing here</button></div>`}</div>
  ${vs.length?`<div class="sec"><span class="label">In your logbook · ${vs.length} ${vs.length===1?'visit':'visits'}</span>${vs.map(visitHTML).join('')}</div>`:''}
  ${b.why?`<div class="sec"><span class="label">Why it matters</span><p class="serif" style="font-size:21px;line-height:1.3">${esc(b.why)}</p></div>`:''}
  <div class="sec"><span class="label">About</span>${paras.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
@@ -919,6 +928,11 @@ function openLoc(){let msg='';const presets=[[BARB,'Barbican, Silk Street'],[fin
   if(t.dataset.p==='real'){if(!navigator.geolocation){msg='Location isn’t available in this browser. Keeping the demo spot.';return el.rerender()}t.disabled=true;t.textContent='Asking your phone…';
    try{navigator.geolocation.getCurrentPosition(p=>{setLoc({lat:p.coords.latitude,lng:p.coords.longitude,label:'Your location',demo:false});closeSheet();toast('Using your real location')},()=>{msg='Location was blocked or unavailable here. Keeping the demo spot.';if(sheetEl===el)el.rerender()},{timeout:8000,maximumAge:60000})}catch(x){msg='Location isn’t available in this preview. Keeping the demo spot.';el.rerender()}return}
   const p=presets[+t.dataset.p];setLoc(near(p[0],p[1]));closeSheet();toast('Demo location: '+(p[1]||p[0].name))})}
+function openDirections(n){const b=BY.get(n);if(!b)return;const dest=b.lat+','+b.lng,g=m=>`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=${m}`,apple=/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent),loc=Data.loc();
+ openSheet('Get directions',()=>`<div class="body"><div class="note-box" style="margin-bottom:14px"><b style="font-weight:600;display:block">${esc(b.name)}</b><span class="muted" style="font-size:13px">${esc(b.street)}, ${esc(b.boro)} · ${fmtDist(dist(b))} away</span></div>
+ ${[['walking','Walk'],['transit','Public transport'],['bicycling','Cycle'],['driving','Drive']].map(([m,l])=>`<a class="setrow" href="${g(m)}" target="_blank" rel="noopener"><span class="grow"><b>${l}</b><small>Opens Google Maps</small></span>${I('chevR')}</a>`).join('')}
+ ${apple?`<a class="setrow" href="https://maps.apple.com/?daddr=${dest}&dirflg=w" target="_blank" rel="noopener"><span class="grow"><b>Apple Maps</b><small>Walking directions</small></span>${I('chevR')}</a>`:''}
+ <p class="muted" style="font-size:12.5px;line-height:1.5;margin:6px 0 8px">Directions lead to the building’s checked map pin and start from your phone’s own location${loc.demo?', not the demo spot':''}.</p></div>`,{cancel:'Close'})}
 function openCity(){openSheet('Choose a city',()=>`<div class="body"><button class="setrow" data-close aria-pressed="true"><span class="grow"><b>London</b><small>${B.length} buildings · ${Data.visitedSet().size} collected</small></span><span class="state-s">${I('check')}</span></button>
  <div class="soon" style="margin-top:6px"><b>More cities coming soon</b><span>London is the first city in the logbook. New cities will appear here as their buildings are researched, fact-checked and drawn.</span></div><div style="height:10px"></div></div>`,{cancel:'Done'})}
 function setLoc(l){Data.s.settings.loc=l;Data.save();mapV=null;G.view=null;render(true)}
@@ -934,7 +948,7 @@ document.addEventListener('click',async e=>{const g=e.target.closest('[data-go]'
  else if(a==='view'){F.view=t.dataset.v;render(true)}else if(a==='style'){const s=t.dataset.s;F.styles.has(s)?F.styles.delete(s):F.styles.add(s);F.shown=30;t.setAttribute('aria-pressed',F.styles.has(s));const fb=$('[data-act="filters"]');const fc=filterCount();fb.innerHTML=I('filter')+'Filters'+(fc?`<span class="badge">${fc}</span>`:'');drawResults()}
  else if(a==='filters')openFilters();else if(a==='clearq'){F.q='';F.shown=30;render();$('#q').focus()}else if(a==='clearall'){F.q='';F.styles.clear();F.eras.clear();F.boro='';F.status='all';F.shown=30;render()}
  else if(a==='more'){F.shown+=30;drawResults()}
- else if(a==='loc')openLoc();else if(a==='city')openCity();else if(a==='levels')openLevels();else if(a==='ybar'){const r=$('#yread');if(r){const on=t.classList.contains('on');$$('.ybars button').forEach(b=>b.classList.remove('on'));if(on)r.textContent=r.dataset.sum;else{t.classList.add('on');r.textContent=t.dataset.t}}}
+ else if(a==='loc')openLoc();else if(a==='city')openCity();else if(a==='levels')openLevels();else if(a==='dir')openDirections(+t.dataset.n);else if(a==='ybar'){const r=$('#yread');if(r){const on=t.classList.contains('on');$$('.ybars button').forEach(b=>b.classList.remove('on'));if(on)r.textContent=r.dataset.sum;else{t.classList.add('on');r.textContent=t.dataset.t}}}
  else if(a==='save'){const on=Data.toggleSave(n);render(true);toast(on?'Saved to Want to visit':'Removed from Want to visit')}
  else if(a==='share'){const b=BY.get(n);shareText(`${b.name}, ${byline(b)}. ${b.sum}`,'Building details copied',location.href.split('#')[0]+'#b-'+b.n)}
  else if(a==='checkin'){if(dist(BY.get(n))<=RADIUS)openLog(n,'site');else{toast('You’re no longer within '+RADIUS+' m');render(true)}}
